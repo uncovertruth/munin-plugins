@@ -1,0 +1,75 @@
+#!/usr/bin/python
+# coding: utf-8
+import os
+import json
+import urllib2
+
+
+DEFAULT_API_HOST = 'localhost'
+DEFAULT_API_PORT = '24220'
+
+
+def get_metrics(host, port):
+    """
+
+    :param host:
+    :param port:
+    :return:
+    """
+    url = 'http://{0}:{1}/api/plugins.json'.format(host, port)
+    ret = urllib2.urlopen(url).read()
+    return json.loads(ret)
+
+
+def get_plugins(ret):
+    """return ret['plugins]'
+
+    :param ret:
+    :return:
+    """
+    return ret['plugins']
+
+
+def get_buffer_total_queued_size(plugin):
+    """only used buffer
+
+    :param plugin:
+    :return: key, value
+    """
+    if plugin['config'].get('buffer_path') is None:
+        return None
+
+    plugin_id = plugin['plugin_id']
+    plugin_type = plugin['type']
+    key = '{0}_{1}'.format(plugin_id, plugin_type)
+
+    value = plugin.get('buffer_total_queued_size')
+
+    return key, value
+
+
+def munin(host, port):
+    """
+
+    :param host: fluentd host
+    :param port: fluentd port
+    :return:
+
+    >>> munin(DEFAULT_API_HOST, DEFAULT_API_PORT)
+    object:3fb784d35e84_tdlog.value 0
+    object:3fb78786369c_webhdfs.value 2075
+    """
+    result = get_metrics(host, port)
+    plugins = get_plugins(result)
+
+    for plugin in plugins:
+        state = get_buffer_total_queued_size(plugin)
+        if state:
+            key, value = state
+            print "{0}.value {1}".format(key, value)
+
+
+if __name__ == "__main__":
+    host = os.environ.get('host', DEFAULT_API_HOST)
+    port = os.environ.get('port', DEFAULT_API_PORT)
+    munin(host, port)

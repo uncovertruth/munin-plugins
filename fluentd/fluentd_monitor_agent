@@ -1,0 +1,95 @@
+#!/usr/bin/python
+import urllib2
+import os
+import sys
+
+
+plugin_counter = {}
+
+
+def get_metrics(host, port):
+    ret = urllib2.urlopen(
+        "http://" + host + ":" + str(port) + "/api/plugins").read()
+    return parse_param(ret)
+
+
+def parse_param(vals):
+    params = []
+    for val in vals.splitlines():
+        param = {}
+        for p in val.split():
+            if "plugin_id:" in p:
+                k, v, i = p.split(':')
+                param[k] = i
+            else:
+                k, v = p.split(':')
+                param[k] = v
+        params.append(param)
+    return params
+
+
+def parse_line(param):
+    if param.pop('output_plugin') != 'true':
+        return None, None, None, param
+    plugin_id = param.pop('plugin_id')
+    plugin_type = None
+    if "type" in param.keys():
+        plugin_type = param.pop('type')
+
+    num_id = 1
+    if plugin_type:
+        if plugin_type in plugin_counter.keys():
+            num_id = plugin_counter[plugin_type] + 1
+            plugin_counter[plugin_type] = num_id
+        else:
+            plugin_counter[plugin_type] = num_id
+    return plugin_id, plugin_type, num_id, param
+
+
+def munin(host, port, target=None):
+    params = get_metrics(host, port)
+    for param in params:
+        plugin_id, plugin_type, num_id, param = parse_line(param)
+        if plugin_type:
+            for k in param:
+                if target is None or target == k:
+                    print plugin_type + "_" + str(num_id) + "_" + k + ".value " + param[k]
+
+
+def config(host, port, target=None):
+    if target:
+        print "graph_title fluentd monitor_agent(" + target + ")"
+    else: 
+        print "graph_title fluentd monitor_agent usage"
+    print "graph_category fluentd"
+    
+    params = get_metrics(host, port)
+    for param in params:
+        id, type, num_id, param = parse_line(param)
+        if type:
+            for k in param:
+                if target is None or target == k:
+                    print type + "_" + str(num_id) + "_" + k + ".label " + type + "_" + str(num_id) + "_" + k
+                    print type + "_" + str(num_id) + "_" + k + ".draw LINE1"
+
+
+if __name__ == "__main__":
+    file_name = os.path.basename(__file__)
+    target = None
+    if file_name.startswith("fluentd_monitor_agent_"):
+        target = file_name[len("fluentd_monitor_agent_"):]
+
+    if os.environ.get('host'):
+        host = os.environ.get('host')
+    else: 
+        host = 'localhost'
+
+    if os.environ.get('port'):
+        port = os.environ.get('port')
+    else: 
+        port = 24220
+
+    if len(sys.argv) > 1 and sys.argv[1] == "config":
+        config(host, port, target)
+    else:
+        munin(host, port, target)
